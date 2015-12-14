@@ -1,0 +1,303 @@
+<apex:page standardController="Account" extensions="AccountSummary" sidebar="false"
+           title="Account Summary: {!Account.Name}" docType="html-5.0" >
+    <apex:stylesheet value="{!URLFOR($Resource.JSTREE,'vakata-jstree-841eee8/dist/themes/default/style.css')}" />
+    <apex:includeScript value="{!URLFOR($Resource.JSTREE,'vakata-jstree-841eee8/dist/json2.js')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.jquery)}"/> 
+    <apex:includeScript value="{!URLFOR($Resource.JSTREE,'vakata-jstree-841eee8/dist/jstree.min.js')}"/>
+    <apex:includeScript value="{!URLFOR($Resource.Chartjs)}"/>
+    <script>
+    var originalOnLoad = window.onload; //save original onload reference
+    window.onload = workaround; 
+    
+    function workaround(){
+        originalOnLoad();  //run the original onload first
+        
+        var src = document.getElementById("summaryRadarChart").getContext("2d");
+        window.myLine = new Chart(src).Radar(SummaryRadarChartData, {
+           animation: true,
+           animationSteps: 200,
+           animationEasing: "easeInOutBounce",
+           scaleLabel: "<%= ' ' + value%>",
+           tooltipTemplate: "<%if (label){%><%=label%> <%}%>"
+        });
+        
+        var rlc = document.getElementById("ratingLineChart").getContext("2d");
+        window.myLine = new Chart(rlc).Line(RatingLineChartData, {
+            responsive: true
+        });
+        var plc = document.getElementById("paynetLineChart").getContext("2d");
+        window.myLine = new Chart(plc).Line(paynetLineChartData, {
+            responsive: true
+        });
+    }
+    var SummaryRadarChartData = {
+        labels: [{!SummaryLabels}],
+        datasets: [
+            {
+                label: "",
+                fillColor: "rgba(151,187,205,0.2)",
+                strokeColor: "rgba(151,187,205,1)",
+                pointColor: "rgba(151,187,205,1)",
+                pointStrokeColor: "#fff",
+                pointHighlightFill: "#fff",
+                pointHighlightStroke: "rgba(151,187,205,1)",
+                data: [{!SummaryData}]
+            }
+        ]
+    };
+    var RatingLineChartData = {
+        labels : [{!RatingDates}],
+        datasets : [
+            {
+                label: "",
+                fillColor : "rgba(151,187,205,0.2)",
+                strokeColor : "rgba(151,187,205,1)",
+                pointColor : "rgba(151,187,205,1)",
+                pointStrokeColor : "#fff",
+                pointHighlightFill : "#fff",
+                pointHighlightStroke : "rgba(151,187,205,1)",
+                data : [{!Ratings}]
+            }
+        ]
+        
+    }
+    var paynetLineChartData = {
+        labels : [{!PaynetDates}],
+        datasets : [
+            {
+                label: "",
+                fillColor : "rgba(151,187,205,0.2)",
+                strokeColor : "rgba(151,187,205,1)",
+                pointColor : "rgba(151,187,205,1)",
+                pointStrokeColor : "#fff",
+                pointHighlightFill : "#fff",
+                pointHighlightStroke : "rgba(151,187,205,1)",
+                data : [{!PaynetScores}]
+            }
+        ]
+        
+    }  
+    </script>
+    <apex:pageBlock title="Account Summary">
+        <apex:outputText value="{!HiddenSections}"/>
+        <br/>
+        <br/>
+        <apex:outputField value="{!Account.Latest_FICO__c}" rendered="false"/>
+        <apex:pageBlockSection title="Account Information" columns="2">    
+            <apex:outputPanel >
+                <apex:pageBlockSection title="Account Information" columns="1" showHeader="False">
+                    <apex:pageBlockSectionItem >
+                        <apex:outputLabel value="Account Name"/>
+                        <apex:outputLink value="/{!Account.Id}">{!Account.Name}</apex:outputLink>
+                    </apex:pageBlockSectionItem>
+                    <apex:outputField value="{!Account.NAICS__c}" id="NAICS"/>
+                    <apex:outputText escape="false" label="Address" value="{0}<BR/> {1},{2} {3}<BR/>{4}">
+                        <apex:param value="{!Account.BillingStreet}"/>
+                        <apex:param value="{!Account.BillingCity}"/>
+                        <apex:param value="{!Account.BillingState}"/>
+                        <apex:param value="{!Account.BillingPostalCode}"/>
+                        <apex:param value="{!Account.BillingCountry}"/>
+                    </apex:outputText>
+                    <apex:outputField value="{!Account.PCRU__c}" />
+                    <apex:outputField value="{!Account.RCT__c}" />
+                    <apex:pageBlockTable value="{!lLegendRadar}" var="item">  
+                        <apex:column headerValue="Category" value="{!item.lgdName}"/>   
+                        <apex:column headerValue="Scale" value="{!item.lgdValue}"/> 
+                        <apex:column headerValue="Score" value="{!item.lgdScore}"/>
+                    </apex:pageBlockTable>
+                </apex:pageBlockSection>
+            </apex:outputPanel>
+            <div>
+                <canvas id="summaryRadarChart" height="350" width="500"></canvas>
+            </div>
+            <BR/> <i>The further out, the higher the number (Positive)</i>
+            <apex:OutputText />
+            <apex:outputField value="{!Account.Account_Data_Quality__c}" />     
+        </apex:pageBlockSection>
+        <apex:pageBlockSection title="Hierarchy"> 
+            <div id="hierarchy" class="demo"></div> 
+        </apex:pageBlockSection>
+        <apex:pageBlockSection title="SGEF Data"> 
+            <apex:outputField value="{!Account.PreScreen_Approved__c}"/>
+            <apex:outputField value="{!Account.Family_PreScreen_Approved__c}"/>
+            <apex:outputField value="{!Account.Approved_Amount__c}"/>
+            <apex:outputField value="{!Account.Family_Approved__c}"/>
+            <apex:outputField value="{!Account.Total_Obligor_Commitments__c}"/>
+            <apex:outputField value="{!Account.Total_Family_Commitments__c}"/>
+            <apex:outputField value="{!Account.Obligor_Exposure__c}"/>
+            <apex:outputField value="{!Account.Family_Exposure_Credit_View__c}"/>
+            <apex:outputField value="{!Account.Total_Obligor_Exposure__c}"/>
+            <apex:outputField value="{!Account.Total_Family_Exposure__c}"/>
+            <apex:outputField value="{!Account.Customer_EL_P__c}"/>
+            <apex:outputField value="{!Account.Family_EL_P__c}"/>
+            <apex:outputField value="{!Account.Customer_EL__c}"/>
+            <apex:outputField value="{!Account.Family_EL__c}"/>
+            <apex:outputField value="{!Account.Active_Contracts__c}"/>
+            <apex:outputField value="{!Account.Family_Active_Contracts__c}"/>
+            <apex:outputField value="{!Account.Credit_Line_Start_Date__c}"/>
+            
+            <apex:outputField value="{!Account.times_30_with_SGEF_US__c}"/>
+            <apex:OutputText />
+            <apex:outputField value="{!Account.Amount_Charged_Off_With_SGEF_US__c}"/>
+            
+        </apex:pageBlockSection>
+        <apex:pageBlockSection title="Obligor Rating" columns="1">
+            <apex:outputPanel rendered="{!ShowAccountRatingsChart}">
+                <div>
+                    <canvas id="ratingLineChart" height="100" width="600"></canvas>
+                </div>
+                <br/><i>Lower is better</i>
+            </apex:outputPanel>
+            <apex:pageBlockTable value="{!accountRatings}" var="item">
+                <apex:column headerValue="Id">
+                    <apex:outputLink value="../{!item.Id}">
+                        <apex:outputField value="{!item.Name}"/>
+                    </apex:outputLink>         
+                </apex:column> 
+                <apex:column value="{!item.Reason_for_rating__c}" />
+                <apex:column value="{!item.Prepared_By__c}"/>
+                <apex:column value="{!item.Validation_Date__c}" />
+                <apex:column value="{!item.Final_Account_Rating__c}" />
+            </apex:pageBlockTable>
+        </apex:pageBlockSection>
+        <apex:pageBlockSection title="Credit Limits">  
+        </apex:pageBlockSection>
+        <apex:pageBlockSection title="D&B Data"> 
+            <apex:outputField value="{!Account.DBNumber__c}"/>
+            <apex:outputField value="{!Account.Operating_Status__c}"/>
+            <apex:outputField value="{!Account.Taxpayer_Id__c}"/>            
+            <apex:outputField value="{!Account.Organization_Start_Year__c}"/>
+            <apex:outputField value="{!Account.Family_Tree_Member_Role__c}"/>        
+            <apex:outputField value="{!Account.Control_Ownership_Date__c}"/>   
+            <apex:outputField value="{!Account.Control_Ownership_Type__c}"/>
+            <apex:outputField value="{!Account.Employees_Consolidated__c}"/>
+            <apex:outputField value="{!Account.DBRating__c}"/>
+            <apex:outputField value="{!Account.Employees_Total__c}"/>
+            <apex:outputField value="{!Account.Condition_Indicator__c}"/>
+            <apex:OutputText value="{!lob}" label="Line Of Business"/>
+            <apex:outputField value="{!Account.Commercial_Credit_Score__c}"/>
+            <apex:OutputText value="{!NameCEO}" label="Name And Title Of Ceo"/>
+            <apex:outputField value="{!Account.Commercial_Credit_Score_Class__c}"/>
+            <apex:OutputText value="{!CCSCExp}" label="Credit Score Class Explanation"/>
+            <apex:outputField value="{!Account.Paydex_Score__c}"/>
+            <apex:outputField value="{!Account.Paydex_Score_Industry__c}"/>
+            <apex:OutputText value="{!PdxCmtFirmDays}" label="Paydex Comment - Firm - Days"/>
+            <apex:OutputText value="{!PdxCmtIndDays}" label="Paydex Comment - Industry - Days"/>
+            <apex:OutputText value="{!PdxCmtFirm}" label=" Paydex Comment Firm"/>
+            <apex:OutputText value="{!PdxCmtInd}" label="Paydex Comment - Industry"/>
+            <apex:outputField value="{!Account.High_Credit_Max_Amount__c}"/>  
+            <apex:outputField value="{!Account.nb_of_Pmt_Exp_Considered_Sati__c}"/>
+            <apex:outputField value="{!Account.of_Payment_Exp_with_Past_Due__c}"/>
+            <apex:outputField value="{!Account.of_Payment_Exp_with_Slow_Pay_Neg_Com__c}"/>
+            <apex:outputField value="{!Account.Total_Amount_Past_Due__c}"/>
+            <apex:OutputText value="{!NbExpPdx}" label="Number Of Experiences Used For Paydex Calculation"/>
+            <apex:OutputText value="{!CompPdxCur12}" label="Composite Paydex Current 12 Months"/>
+            <apex:OutputText value="{!CompPdxPrev12}" label="Composite Paydex Prior 12 Months"/>
+        </apex:pageBlockSection>
+        <apex:pageBlockSection title="Contacts (With Personal Bureau)" rendered="{!ShowContacts}"> 
+            <apex:repeat value="{!contacts}" var="item">
+                <apex:outputLink id="item" value="../{!item.id}">{!item.FirstName} {!item.LastName}</apex:outputLink>
+                <apex:OutputText />
+                <apex:outputField value="{!item.Title}" />
+                <apex:outputField value="{!item.nb_of_Public_Records__c}"/>
+                <apex:outputField value="{!item.nb_of_Inquiries_last_5_months__c}"/>
+                <apex:outputField value="{!item.Total_Balance__c}"/>
+                <apex:outputField value="{!item.Oldest_Trade_in_Files__c}"/>
+                <apex:outputField value="{!item.nb_of_Trade_Lines__c}"/>
+                <apex:outputField value="{!item.Trade_Lines_Now_Current__c}"/>
+                <apex:outputField value="{!item.Revolving_Available_Percent__c}"/>
+                <apex:outputField value="{!item.Percent_Ownership__c}"/>
+                <apex:outputField value="{!item.FICO_Consumer_Score__c}" />
+            </apex:repeat> 
+        </apex:pageBlockSection>
+        <apex:pageBlockSection title="RiskCalc" columns="1" rendered="{!ShowRiskCalc}"> 
+            <apex:pageBlockTable value="{!riskcalcs}" var="item">  
+                <apex:column headerValue="Name">
+                    <apex:outputLink value="../{!item.Id}">
+                        <apex:outputField value="{!item.Name}"/>
+                    </apex:outputLink>         
+                </apex:column>
+                <apex:column headerValue="Statement Date" value="{!item.Statement_Date__c}"/>       
+                <apex:column headerValue="Bond Default Rate Mapping 1-Year-CCA" value="{!item.CCA_Bond_Default_Rate_Mapping_1_Year__c}"/>   
+                <apex:column headerValue="RC Version" value="{!item.RC_Version__c}"/>   
+                <apex:column headerValue="RA" value="{!item.RA__c }"/> 
+            </apex:pageBlockTable>          
+        </apex:pageBlockSection>
+        <apex:pageBlockSection title="FICO" columns="1" rendered="{!ShowFico}">
+            <apex:pageBlockTable value="{!ficos}" var="item">  
+                <apex:column headerValue="Request Type">
+                    <apex:outputLink value="../{!item.Id}">
+                        <apex:outputField value="{!item.Request_Type__c}"/>
+                    </apex:outputLink>         
+                </apex:column>
+                <apex:column headerValue="Model" value="{!item.Model__c}"/>       
+                <apex:column headerValue="SBSS Score" value="{!item.Score__c}"/>   
+                <apex:column headerValue="Banruptcy Score" value="{!item.Bankruptcy_Score__c}"/> 
+            </apex:pageBlockTable>          
+        </apex:pageBlockSection>
+        <apex:pageBlockSection title="Account Score Card" columns="1" rendered="{!ShowAccountScoreCards}">
+            <apex:pageBlockTable value="{!accountScoreCards}" var="item">
+                <apex:column headerValue="Id">
+                    <apex:outputLink value="../{!item.Id}">
+                        <apex:outputField value="{!item.Name}"/>
+                    </apex:outputLink>         
+                </apex:column>               
+                <apex:column headerValue="Created By" value="{!item.CreatedBy.LastName}"/>
+                <apex:column headerValue="Result" value="{!item.Result__c}"/>       
+                <apex:column headerValue="Reason" value="{!item.updReason__c}"/>   
+                <apex:column headerValue="Max Amt Allowed" value="{!item.updMaximum_Amount_Allowed__c}"/>   
+                <apex:column headerValue="Max Exposure" value="{!item.updMax_Exposure__c}"/>   
+                <apex:column headerValue="Rating" value="{!item.updObligor_Rating__r.Name}"/>
+            </apex:pageBlockTable>    
+        </apex:pageBlockSection> 
+        <apex:pageBlockSection title="Paynet" rendered="{!ShowPaynet}" columns="1">
+            <apex:outputPanel rendered="{!ShowPaynetChart}">
+                <div>
+                    <canvas id="paynetLineChart" height="100" width="600"></canvas>
+                </div>
+                <br/><i>Higher is better</i>
+            </apex:outputPanel>
+            <apex:pageBlockTable value="{!paynets}" var="item">
+                <apex:column headerValue="Id">
+                    <apex:outputLink value="../{!item.Id}">
+                        <apex:outputField value="{!item.Name}"/>
+                    </apex:outputLink>         
+                </apex:column>  
+                <apex:column value="{!item.Account__c}"/>
+                <apex:column value="{!item.CreatedDate}"/>
+                <apex:column value="{!item.Paynet_Score__c}"/>
+                <apex:column value="{!item.Paynet_Percentile__c}"/>
+                <apex:column value="{!item.Full_Report__c}"/>
+            </apex:pageBlockTable>
+            <apex:pageBlockSection columns="2" title="Most Recent Paynet Report">
+                <apex:outputField value="{!paynet.Paynet_Id__c}"/>
+                <apex:outputField value="{!paynet.Paynet_Score__c}"/>
+                <apex:outputField value="{!paynet.Oldest_Contract__c}"/>
+                <apex:outputField value="{!paynet.Paynet_Percentile__c}"/>
+                <apex:outputField value="{!paynet.Gross_Original_Receivable__c}"/>
+                <apex:outputField value="{!paynet.Paynet_Historic_Probability_of_Default__c}"/>
+                <apex:outputField value="{!paynet.High_Credit_ever_Outstanding__c}"/>
+                <apex:outputField value="{!paynet.Total_Inquieries_last_6_month__c}"/>
+                <apex:outputField value="{!paynet.Number_of_Open_Contracts__c}"/>
+                <apex:outputField value="{!paynet.Number_of_Closed_Contracts__c}"/>
+                <apex:outputField value="{!paynet.Losses_Write_offs_Reported__c}"/>
+                <apex:outputField value="{!paynet.Tax_Id__c}"/>
+                <apex:outputField value="{!paynet.Nb_times_Delinquent_31_60__c}"/>
+                <apex:outputField value="{!paynet.Last_Time_Delinquent_31_60__c}"/>
+                <apex:outputField value="{!paynet.Nb_times_Delinquent_61_90__c}"/>
+                <apex:outputField value="{!paynet.Last_Time_Delinquent_61_90__c}"/>
+                <apex:outputField value="{!paynet.Nb_times_Delinquent_91__c}"/>
+                <apex:outputField value="{!paynet.Last_Time_Delinquent_91__c}"/>
+            </apex:pageBlockSection>
+        </apex:pageBlockSection>
+    </apex:pageBlock>
+    <script>
+    $('#hierarchy').jstree({"plugins": ["html_data", "types", "wholerow"],
+                            "types":{"final":{"icon": "/img/check.gif"}},"core" : {"data" : [
+                                {!accountFamily.JSON}
+                            ]}
+                           }).on("select_node.jstree", function (e, data) {
+        document.location = "/apex/AccountSummary?id=" + data.instance.get_node(data.selected[0]).li_attr.accid;
+    });
+    </script>
+</apex:page>
