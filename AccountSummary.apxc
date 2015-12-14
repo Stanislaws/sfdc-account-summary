@@ -1,0 +1,549 @@
+/**
+ * This class is responsible for providing the data for the account summary page
+ */ 
+public Class AccountSummary{
+
+    public AccFamily accountFamily{get;set;}
+    public List<RiskCalc__c> riskcalcs{get;set;}
+    public List<FICO__c> ficos{get;set;}
+    public List<Contact> contacts{get;set;}
+    public List<Account_Score_card__c> accountScoreCards{get;set;}
+    public List<Paynet__c> paynets{get;set;}
+    public List<Account_Rating__c> accountRatings{get;set;}
+    public List<Legend> lLegendRadar{get;set;}
+    public class Legend{
+        public String lgdName{get;set;}
+        public String lgdValue{get;set;}
+        public String lgdScore{get;set;}
+        public Legend(String name, String value, Decimal score){
+            lgdName = name;
+            lgdValue = value; 
+            lgdScore = String.valueOf(score);
+        }
+        public Legend(String name, String value, String score){
+            lgdName = name;
+            lgdValue = value;
+            lgdScore = score;
+        }
+    }
+    
+    public Map<String,String> mValues{get;set;}
+    public String AvgHighCdt{get;set;}
+    public String NameCEO{get;set;}
+    public String CCSPercentile{get;set;}
+    public String CCSCExp{get;set;}
+    public String lob{get;set;}
+    public String PdxCmtFirm{get;set;}
+    public String PdxCmtFirmDays{get;set;}
+    public String PdxCmtInd{get;set;}
+    public String PdxCmtIndDays{get;set;}
+    public String CompPdxCur12{get;set;}
+    public String CompPdxPrev12{get;set;}
+    public String NbExpPdx{get;set;}
+    public String NbPdxSlow{get;set;}
+    Public String BD_RTE{get;set;}
+    Public String CLAS_SCR{get;set;}
+    Public String CLAS_SCR_INCDE_PCTG{get;set;}
+    Public String OVRL_BD_RTE{get;set;}
+    Public String RSK_LVL_DESC{get;set;}
+    Public String PTFL_CMPA_SCR_BD_RTE{get;set;}
+    Public String PTFL_CMPA_SCR_CLAS_SCR{get;set;}
+    Public String PTFL_CMPA_SCR_CLAS_SCR_INCDE_PCTG{get;set;}
+    Public String MDL_SEG_DESC{get;set;}
+    Public String PTFL_CMPA_SCR_RSK_LVL_DESC{get;set;}
+    Public String SEG_BD_RTE{get;set;}
+    ApexPages.StandardController controller;
+    
+    public Class AccFamily{
+        public Account acc{get;set;}
+        public List<AccFamily> lAccF{get;set;} public String getJSON(){String sJSON='{"text":"' + acc.Name + '", "li_attr" : {"accid" : "' + acc.Id + '"},state : {opened : true},"children":[';for(AccFamily accf:lAccF){sJSON+=accf.getJSON();}sJSON+=']}';return sJSON.replace(',"children":[]','').replace('}{','},{');}
+    }
+    
+    public Paynet__c paynet {get;set;}  
+    public AccountSummary(ApexPages.StandardController controller){
+        this.controller = controller;
+        lLegendRadar=new List<Legend>();
+        Account acc=[SELECT Latest_Fico__c,Latest_Fico__r.Experian_FICO_Consumer_Score_1__c, 
+                     Latest_Fico__r.Experian_FICO_Consumer_Score_2__c,Paydex_Score__c,
+                     Latest_Fico__r.Bankruptcy_Score__c,Commercial_Credit_Score__c,
+                     Converted_Rating__c,Latest_Fico__r.Score__c,Customer_EL_P__c, Customer_EL__c,
+                     Control_Ownership_Date__c,Annual_Revenue__c,CurrencyIsoCode,Account_Rating__c
+                     FROM Account 
+                     WHERE id=:controller.getId()].get(0);
+        Decimal score;        
+		score = getFicoConsumer(acc,score);
+        score = getDnBPaydex(acc,score);
+        score = getFicoBankruptcy(acc,score);
+        score = getDnBCcs(acc,score);
+		score = getSgRating(acc,score);
+        score = getFicoSbss(acc,score);
+		score = getElPercent(acc,score);
+        //score = getControlOwnershipYears(acc,score);
+        score = getAnnualRevenue(acc,score);
+        paynets = getPaynets();
+        getPaynetData();
+        summaryLabels = removeLastComma(summaryLabels);
+        summaryData = removeLastComma(summaryData);
+		paynets = getPaynets();
+        riskcalcs = getRiskCalcs();
+        ficos = getFicos();
+        accountScoreCards = getAccountScoreCards();
+        accountFamily = getAccountHierarchy(controller.getId());
+        contacts = getContacts();
+        for(Contact contact : contacts){
+            if(contact.FICO_Consumer_Score__c != null && contact.FICO_Consumer_Score__c.length() == 4){
+                contact.FICO_Consumer_Score__c = contact.FICO_Consumer_Score__c.substring(1);
+            }
+        }
+        accountRatings = getAccountRatings();
+		getLatestFicoData(acc);	
+        if(paynets.size() > 0) paynet = paynets.get(0);
+    }
+    /**
+     * gets a string value from the mValues map for a given param
+     */ 
+    private String getString(String param){
+        try{
+            return mValues.get(param);
+        }catch(Exception ex){
+            return '';
+        }
+    }
+    public boolean getShowPaynetChart(){
+        if(paynets.size() > 1) return true;
+        else return false;
+    }
+    public boolean getShowAccountRatingsChart(){
+        if(accountRatings.size() > 1) return true;
+        else return false;
+    }
+    private String removeLastComma(String input){
+        if(input.length() > 0) return input.substring(0, input.length() - 1);
+        else return input;
+    }
+    public String getRatingDates(){
+        String ratingDates = '';
+        for(Account_Rating__c accountRating : accountRatings){
+            Datetime d = accountRating.Validation_Date__c;
+            String validDate = d.month() + '/' + d.day() + '/' + d.year();
+            ratingDates += '"' + validDate + '",';
+        }
+        return removeLastComma(ratingDates);
+    }
+    public String getRatings(){
+        String ratings = '';
+        for(Account_Rating__c accountRating : accountRatings){
+            ratings += '"' + ConvertSGRating(accountRating.Final_Account_Rating_SG__c) + '",';
+        } 
+        return removeLastComma(ratings);
+    }
+    public String getPaynetDates(){
+        String paynetDates = '';
+        for(Paynet__c paynet : paynets){
+            Datetime d = paynet.CreatedDate;
+            String createDate = d.month() + '/' + d.day() + '/' + d.year();
+            paynetDates += '"' + createDate + '",';
+        }
+        return removeLastComma(paynetDates);
+    }
+    @TestVisible
+    private String ConvertSGRating(String input){
+        if(input=='1') return '1';
+        else if(input=='2+') return '1.5';
+        else if(input=='2-') return '2.33';
+        else if(input=='3+') return '2.67';
+        else if(input=='3') return '3';
+        else if(input=='3-') return '3.33';
+        else if(input=='4+') return '3.67';
+        else if(input=='4') return '4';
+        else if(input=='4-') return '4.33';
+        else if(input=='5+') return '4.67';
+        else if(input=='5') return '5';
+        else if(input=='5-') return '5.33';
+        else if(input=='6+') return '5.67';
+        else if(input=='6') return '6';
+        else if(input=='6-') return '6.33';
+        else if(input=='7+') return '6.67';
+        else if(input=='7') return '7';
+        else if(input=='7-') return '7.5';
+        else if(input=='8') return input;
+        else if(input=='9') return input;
+        else if(input=='10') return input;
+        else return input.remove('+').remove('-');
+    }
+    public String getPaynetScores(){
+        String paynetScores = '';
+        for(Paynet__c paynet : paynets){
+            paynetScores += '"' + paynet.Paynet_Score__c + '",';
+        }
+        return removeLastComma(paynetScores);
+    }
+    public boolean getShowContacts(){
+        if(contacts.size() == 0) return false;
+        else return true;
+    }
+    public boolean getShowRiskCalc(){
+        if(riskcalcs.size() == 0) return false;
+        else return true;
+    }
+    public boolean getShowFico(){
+        if(ficos.size() == 0) return false;
+        else return true;
+    }
+    public boolean getShowAccountScoreCards(){
+        if(accountScoreCards.size() == 0) return false;
+        else return true;
+    }
+    public boolean getShowPaynet(){
+        if(paynets.size() == 0) return false;
+        else return true;
+    }
+    public String summaryLabels = '';
+    public String summaryData = '';
+    
+    public String getSummaryLabels(){
+        return summaryLabels;
+    }
+    
+    public String getSummaryData(){
+        return summaryData;
+    }
+
+    /**
+     * Shows the user which sections are hidden from view on the visualforce page
+     */ 
+    public String getHiddenSections(){
+        String hiddenSection = '';
+        if(riskcalcs.size() == 0) hiddenSection += 'Riskcalc,';
+        if(ficos.size() == 0) hiddenSection += 'FICO,';
+        if(accountScoreCards.size() == 0) hiddenSection += 'Account Score Card,';
+        if(contacts.size() == 0) hiddenSection += 'Contacts,';
+        if(paynets.size() == 0) hiddenSection += 'Paynet,';
+        String[] hiddenSections = hiddenSection.split(',');
+        hiddenSection = 'Sections Hidden because they\'re empty: ';
+        for(Integer i = 0; i < hiddenSections.size(); i++){
+            if(i == (hiddenSections.size() - 1))
+                hiddenSection += hiddenSections[i] + '.';
+            else
+                hiddenSection += hiddenSections[i] + ', ';
+        }
+        if(hiddenSections.size() == 0) hiddenSection = '';
+        return hiddenSection;
+    }
+    /**
+     * get FICO Consumer 1 & 2 - Scale is from 300 to 850
+     */ 
+    private Decimal getFicoConsumer(Account acc, Decimal score){
+        if(acc.Latest_Fico__r.Experian_FICO_Consumer_Score_1__c!=null){
+            score = (acc.Latest_Fico__r.Experian_FICO_Consumer_Score_1__c-300).divide(550,2);
+            lLegendRadar.add(new Legend('FICO Consumer 1 Score','300 to 850+',
+                                        acc.Latest_Fico__r.Experian_FICO_Consumer_Score_1__c));
+            if(score>1){
+                score=1;
+            }
+            summaryLabels+='"FICO Consumer 1 Score",';
+            summaryData+='"'+score+'",';
+        }
+        if(acc.Latest_Fico__r.Experian_FICO_Consumer_Score_2__c!=null){
+            score=(acc.Latest_Fico__r.Experian_FICO_Consumer_Score_2__c-300).divide(550,2);
+            lLegendRadar.add(new Legend('FICO Consumer 2 Score','300 to 850+',
+                                        acc.Latest_Fico__r.Experian_FICO_Consumer_Score_2__c));
+            if(score>1){
+                score=1;
+            }            
+            summaryLabels+='"FICO Consumer 2 Score",';
+            summaryData+='"'+score+'",';
+        }
+        return score;
+    }
+    /**
+     * get D&B Paydex - Scale is from 20 to 100
+     */ 
+    private Decimal getDnBPaydex(Account acc, Decimal score){
+        if(acc.Paydex_Score__c!=null){
+            score=(acc.Paydex_Score__c-20).divide(80,2);
+            lLegendRadar.add(new Legend('D&B Paydex','20 to 100+',acc.Paydex_Score__c));
+            if(score>1){
+                score=1;
+            }
+            summaryLabels+='"D&B Paydex",';
+            summaryData+='"'+score+'",';
+        }
+        return score;
+    }
+    /**
+     * get FICO Bankruptcy - Scale is from 70 to 300
+     */ 
+    private Decimal getFicoBankruptcy(Account acc, Decimal score){
+        if(acc.Latest_Fico__r.Bankruptcy_Score__c!=null){
+            score=(acc.Latest_Fico__r.Bankruptcy_Score__c-70).divide(230,2);
+            lLegendRadar.add(new Legend('FICO Bankruptcy','70 to 300+',acc.Latest_Fico__r.Bankruptcy_Score__c));
+            if(score>1){
+                score=1;
+            }
+            summaryLabels+='"FICO Bankruptcy",';
+            summaryData+='"'+score+'",';
+        }
+        return score;
+    }
+    /**
+     * get D&B CCS - Scale is from 100 to 670
+     */ 
+    private Decimal getDnBCcs(Account acc, Decimal score){
+        if(acc.Commercial_Credit_Score__c!=null){
+            score=(Decimal.valueOf(acc.Commercial_Credit_Score__c)-100).divide(570,2);
+            lLegendRadar.add(new Legend('D&B CCS','100 to 670',
+                                        Integer.valueOf(acc.Commercial_Credit_Score__c)));
+            if(score>1){
+                score=1;
+            }
+            summaryLabels+='"D&B CCS",';
+            summaryData+='"'+score+'",';
+        }
+        return score;
+    }
+    /**
+     * get SG Rating - Scale is from 10 to 1
+     */ 
+    private Decimal getSgRating(Account acc, Decimal score){
+        if(acc.Converted_Rating__c!=null && acc.Converted_Rating__c <= 10){
+            score = 1 - ((acc.Converted_Rating__c - 1).divide(9,2));
+            lLegendRadar.add(new Legend('SG Obligor Rating', '10 to 1', acc.Account_Rating__c));
+            if(score > 1){
+                score = 1;
+            }
+            summaryLabels += '"SG Obligor Rating",';
+            summaryData += '"' + score + '",';
+        }
+        return score;
+    }
+    /**
+     * get FICO SBSS - Scale is from 140 to 280
+     */ 
+    private Decimal getFicoSbss(Account acc, Decimal score){
+        if(acc.Latest_Fico__r.Score__c!=null){
+            score=(acc.Latest_Fico__r.Score__c-140).divide(140,2);
+            lLegendRadar.add(new Legend('FICO Commercial Credit Score','140 to 280+',acc.Latest_Fico__r.Score__c));
+            if(score>1){
+                score=1;
+            }
+            summaryLabels+='"FICO Commercial Credit Score",';
+            summaryData+='"'+score+'",';
+        }
+        return score;
+    }
+    /**
+     * get EL% - Scale is from 95 to 0
+     */ 
+    private Decimal getElPercent(Account acc, Decimal score){
+        if(acc.Customer_EL_P__c!=null){
+            score=1-acc.Customer_EL_P__c.divide(95,2);
+            lLegendRadar.add(new Legend('EL%','95% to 0%',acc.Customer_EL_P__c));
+            if(score>1){
+                score=1;
+            }
+            summaryLabels+='"EL%",';
+            summaryData+='"'+score+'",';
+        }
+        return score;
+    }
+    /**
+     * get Control Ownership Years - Scale is from 0 to 10+
+     
+    private Decimal getControlOwnershipYears(Account acc, Decimal score){
+        if(acc.Control_Ownership_Date__c!=null){
+            transient Integer thisYear = Date.today().year();
+            Integer ownershipYears = thisYear - Integer.valueOf(acc.Control_Ownership_Date__c);
+            
+            score=Decimal.valueOf(ownershipYears).divide(10,2);
+            lLegendRadar.add(new Legend('Control Ownership Years','0 to 10+',ownershipYears));
+            if(score>1){
+                score=1;
+            }
+            summaryLabels+='"Control Ownership Years",';
+            summaryData+='"'+score+'",';
+        }
+        return score;
+    }*/ 
+    /**
+     * get Annual Revenue - Scale is from 0 to 50M
+     */ 
+    private Decimal getAnnualRevenue(Account acc, Decimal score){
+        if(acc.Annual_Revenue__c!=null){
+            score=acc.Annual_Revenue__c.divide(50000000,2);
+            List<String> args = new String[]{'0','number','###,###,##0.00'};
+                String annualRevenue = String.format(acc.Annual_Revenue__c.format(), args);
+            lLegendRadar.add(new Legend('Annual Revenue','0 to 50M+',
+                                        annualRevenue+ ' ' + acc.CurrencyIsoCode));
+            if(score>1){
+                score=1;
+            }
+            summaryLabels+='"Annual Revenue",';
+            summaryData+='"'+score+'",';
+        }
+        return score;
+    }
+    private void getPaynetData(){
+        if(paynets.size()>0){
+            lLegendRadar.add(new Legend('Paydex Masterscore V2','605 to 800',paynets.get(0).Paynet_Score__c));
+            summaryLabels+='"Paynet Masterscore V2",';
+            summaryData+='"'+(paynets.get(0).Paynet_Score__c - 605).divide(195,2)+'",';
+        }
+    }
+    /**
+     * @brief get paynet fields
+     */ 
+    private List<Paynet__c> getPaynets(){
+        return [SELECT Name, Company_Name__c,Full_Report__c,Gross_Original_Receivable__c,
+                High_Credit_ever_Outstanding__c,Paynet_Historic_Probability_of_Default__c,HTML__c,
+                Last_Time_Delinquent_31_60__c,Last_Time_Delinquent_61_90__c,
+                Last_Time_Delinquent_91__c, Losses_Write_offs_Reported__c,Main_Paynet_Report__c,
+                Paynet_Score__c,Nb_times_Delinquent_31_60__c,Account__c,
+                Nb_times_Delinquent_61_90__c,Nb_times_Delinquent_91__c,Number_of_Closed_Contracts__c,
+                Number_of_Open_Contracts__c,Oldest_Contract__c,Paynet_Id__c,Paynet_Report__c,
+                Paynet_Percentile__c,Tax_Id__c,Total_Inquieries_last_6_month__c,Version__c,CreatedDate
+                FROM Paynet__c 
+                WHERE Account__c = :controller.getId() AND Version__c = 'V2'
+                ORDER BY CreatedDate DESC];
+    }
+    /**
+     * @brief get risk calc fields
+     */ 
+    private List<RiskCalc__c> getRiskCalcs(){
+        return [SELECT Name, CreatedBy.FirstName, CreatedBy.LastName, CreatedDate, Statement_Date__c, 
+                CCA_Bond_Default_Rate_Mapping_1_Year__c,RC_Version__c, RA__c 
+                From RiskCalc__c
+                WHERE Account__c = :controller.getId()
+                ORDER BY CreatedDate DESC];
+    }
+    /**
+     * @brief get fico fields
+     */ 
+    private List<Fico__c> getFicos(){
+        return [SELECT Request_Type__c, CreatedBy.FirstName, CreatedBy.LastName, CreatedDate,Model__c,
+                Score__c,Bankruptcy_Score__c 
+                FROM FICO__c 
+                WHERE Account__c = :controller.getId()
+                Order By CreatedDate DESC];
+    }
+    /**
+     * @brief get account score card fields
+     */ 
+    private List<Account_Score_Card__c> getAccountScoreCards(){
+        return [SELECT Name,CreatedBy.FirstName, CreatedBy.LastName, CreatedDate, Result__c, 
+                updReason__c,updMaximum_Amount_Allowed__c,updMax_Exposure__c,updObligor_Rating__r.Name
+                FROM Account_Score_Card__c 
+                WHERE Account__c = :controller.getId()
+                ORDER BY CreatedDate DESC];
+    }
+    /**
+     * @brief get contact fields
+     */ 
+    private List<Contact> getContacts(){
+        return [SELECT FirstName, LastName, nb_of_Public_Records__c, nb_of_Inquiries_last_5_months__c,
+                Total_Balance__c, Oldest_Trade_in_Files__c, nb_of_Trade_Lines__c, Trade_Lines_Now_Current__c,
+                Source_Segment__c, Revolving_Available_Percent__c, FICO_Consumer_Score__c, Title, 
+                Percent_Ownership__c 
+                FROM Contact 
+                WHERE AccountId = :controller.getId()
+                ORDER BY CreatedDate DESC];
+    }
+    /**
+     * @brief get account rating fields
+     */ 
+    private List<Account_Rating__c> getAccountRatings(){
+        return [SELECT Name, Reason_for_rating__c, Final_Account_Rating__c, Validation_Date__c,
+                Final_Account_Rating_SG__c, Prepared_By__c
+                FROM Account_Rating__c
+                WHERE Validation_Date__c != NULL 
+                AND Customer__c = :controller.getId()
+                ORDER BY Validation_Date__c];
+    }
+    /**
+     * Getting Latest FICO Data
+     */ 
+    private void getLatestFicoData(Account acc){
+        List<Attachment> lAtt=[SELECT Name,Body 
+                               FROM Attachment 
+                               WHERE Name='FICOResponse.xml' 
+                               AND parentId=:acc.Latest_FICO__c];
+        if(lAtt.size()>0){
+            Attachment a=latt.get(0); 
+            mValues=utils.xmlToTreeAndMap(a.Body.toString());
+        }
+        AvgHighCdt=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.AVG_HIGH_CR');
+        NameCEO=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.CEO_NME_TTL');
+        CCSPercentile=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.CMCL_CR_SCR_PCTG');
+        CCSCExp=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.CR_SCR_CLAS_ICPL');
+        lob=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.LOB');
+        PdxCmtFirm=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.PAYD_CMNT_FRM');
+        PdxCmtFirmDays=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.PAYD_CMNT_FRM_DAYS');
+        PdxCmtInd=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.PAYD_CMNT_INDS');
+        PdxCmtIndDays=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.PAYD_CMNT_INDS_DAYS');
+        CompPdxCur12=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USP79.CMPS_PAYD_CURR');
+        CompPdxPrev12=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USP79.CMPS_PAYD_PRIR');
+        NbExpPdx=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USP79.NBR_EXPR_PAYD_CALC');
+        NbPdxSlow=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USP79.NBR_PMT_EXPR_SLOW_MANR');
+        BD_RTE=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.VBLTY_SCR.BD_RTE');
+        CLAS_SCR=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.VBLTY_SCR.CLAS_SCR');
+        CLAS_SCR_INCDE_PCTG=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.VBLTY_SCR.CLAS_SCR_INCDE_PCTG');
+        OVRL_BD_RTE=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.VBLTY_SCR.OVRL_BD_RTE');
+        RSK_LVL_DESC=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.VBLTY_SCR.RSK_LVL_DESC');
+        PTFL_CMPA_SCR_BD_RTE=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.PTFL_CMPA_SCR.BD_RTE');
+        PTFL_CMPA_SCR_CLAS_SCR=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.PTFL_CMPA_SCR.CLAS_SCR');
+        PTFL_CMPA_SCR_CLAS_SCR_INCDE_PCTG=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.PTFL_CMPA_SCR.CLAS_SCR_INCDE_PCTG');
+        MDL_SEG_DESC=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.PTFL_CMPA_SCR.MDL_SEG_DESC');
+        PTFL_CMPA_SCR_RSK_LVL_DESC=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.PTFL_CMPA_SCR.RSK_LVL_DESC');
+        SEG_BD_RTE=getString('.Envelope.Body.ObtainDecisionDataResponse.ObtainDecisionDataResult.FI_LiquidCredit.business_info.dataSourceList.dataSource.responseList.response.data.xml.DGX.CREDITMSGSRSV2.DATATRNRS.DATARS.USPIJ.DNB_VBLTY_RATG_ENTR.PTFL_CMPA_SCR.SEG_BD_RTE');
+    }
+    /**
+     * gets an account's heirarchy from a given AccountId
+     */ 
+    public static AccFamily getAccountHierarchy(Id AccountId){
+        //Getting Ultimate Parent
+        Account acc=[Select id,
+            parentId,
+            parent.parentId,
+            parent.parent.parentId,
+            parent.parent.parent.parentId,
+            parent.parent.parent.parent.parentId,
+            parent.parent.parent.parent.parent.parentId
+            from Account where id=:AccountId].get(0);
+        Id ultimAcc=AccountId;
+        if(acc.parentId!=null){if(acc.parent.parentId!=null){
+            if(acc.parent.parent.parentId!=null){
+                if(acc.parent.parent.parent.parentId!=null){
+                    if(acc.parent.parent.parent.parent.parentId!=null){
+                        if(acc.parent.parent.parent.parent.parent.parentId!=null){
+                            ultimAcc=acc.parent.parent.parent.parent.parent.parentId;
+                        }else{
+                            ultimAcc=acc.parent.parent.parent.parent.parentId;
+                        }
+                    }else{
+                        ultimAcc=acc.parent.parent.parent.parentId;
+                    }
+                }else{
+                    ultimAcc=acc.parent.parent.parentId;
+                }
+            }else{
+                ultimAcc=acc.parent.parentId;
+            }
+        }else{
+            ultimAcc=acc.parentId;
+        }
+        }
+        return getAccountsChildren(ultimAcc);
+    }
+    /**
+     * gets an accounts children from an given accountId
+     */ 
+    public static AccFamily getAccountsChildren(Id AccountId){
+        AccFamily accf=new AccFamily();
+        accf.lAccF=new List<AccFamily>();
+        accf.acc=[Select id,Name From Account where id=:AccountId].get(0);
+        for(Account a:[Select id from Account where parentId=:AccountId]){
+            accf.lAccF.add(getAccountsChildren(a.Id));
+        }
+        return accf;
+    }
+}
